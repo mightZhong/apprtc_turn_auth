@@ -207,16 +207,16 @@ func recvTurnCapacity() {
     }
 }
 
-//func checkTurnAlive() {
-//    for {
-//        select {
-//            case <-timer.C:
-//                fmt.Printf("Trigger timer\n")
-//                //nodechoice.CleanLostNodes(turnList);
-//                //timer.Reset(time.Second * 10)
-//        }
-//    }
-//}
+func checkTurnAlive() {
+    for {
+        select {
+            case <-timer.C:
+                fmt.Printf("Trigger timer\n")
+                nodechoice.CleanLostNodes(turnList);
+                timer.Reset(time.Second * 10)
+        }
+    }
+}
 
 var port = flag.Int("port", 8081, "The TCP port that the server listens on")
 
@@ -226,8 +226,8 @@ func main() {
 
     go recvTurnCapacity()
 
-    //timer = time.NewTimer(time.Second * 10)
-    //go checkTurnAlive()
+    timer = time.NewTimer(time.Second * 10)
+    go checkTurnAlive()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "Welcome to the home page!")
