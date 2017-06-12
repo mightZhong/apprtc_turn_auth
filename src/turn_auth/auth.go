@@ -5,11 +5,15 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
+    "os"
 	"flag"
 	"fmt"
 	"math"
 	"net/http"
+    "net"
 	"time"
+    "strconv"
+    "nodechoice"
 )
 
 //curl 'https://networktraversal.googleapis.com/v1alpha/iceconfig?key=AIzaSyAJdh2HkajseEIltlZ3SIXO02Tze9sO3NY' -X POST -H 'origin: https://appr.tc' -H 'accept-encoding: gzip, deflate, br' -H 'accept-language: zh-CN,zh;q=0.8,en;q=0.6' -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36' -H 'accept: */*' -H 'referer: https://appr.tc/' -H 'authority: networktraversal.googleapis.com' -H 'content-length: 0' --compressed
@@ -35,6 +39,8 @@ import (
 }
 */
 
+var turnList *nodechoice.Node
+var timer *time.Timer
 type iceServer struct {
 	Urls       []string `json:"urls"`
 	Username   string   `json:"username"`
@@ -132,6 +138,9 @@ func turnHandler(w http.ResponseWriter, req *http.Request) {
 	var turn_username string = fmt.Sprintf("%d", int(timestamp))
 	var password string = hmac_func(key, turn_username)
 
+    server := nodechoice.GetBestServer(turnList)
+    fmt.Printf("Choose best server %s\n", server)
+
 	var is iceServer
 	is.Username = turn_username
 	is.Credential = password
@@ -164,18 +173,61 @@ func turnHandler2(w http.ResponseWriter, req *http.Request) {
 	ta.Password = password
 	ta.Uris = append(ta.Uris, "turn:10.58.60.236:9000?transport=udp")
 	ta.Uris = append(ta.Uris, "turn:10.58.60.236:9000?transport=tcp")
-
 	b, _ := json.Marshal(ta)
 	fmt.Println(string(b))
 
 	fmt.Fprintf(w, string(b))
 }
 
+func checkError(err error) {
+    if err != nil {
+        fmt.Println("Error: ", err)
+        //TODO
+        os.Exit(-1)
+    }
+}
+
+
+func recvTurnCapacity() {
+    var buf [512]byte
+    //TODO
+    udpAddr, err := net.ResolveUDPAddr("udp", ":9000")
+    checkError(err)
+    conn, err := net.ListenUDP("udp", udpAddr)
+    checkError(err)
+    turnList = nodechoice.CreateNode("", 0)
+    for {
+        n, addr, err := conn.ReadFromUDP(buf[0:])
+        checkError(err)
+        idle, err := strconv.Atoi(string(buf[0:n]))
+        checkError(err)
+        fmt.Printf("Idle %d from %s\n",uint32(idle), addr.String())
+        nodechoice.UpdateList(turnList, addr.String(), uint32(idle))
+        nodechoice.PrintList(turnList)
+    }
+}
+
+//func checkTurnAlive() {
+//    for {
+//        select {
+//            case <-timer.C:
+//                fmt.Printf("Trigger timer\n")
+//                //nodechoice.CleanLostNodes(turnList);
+//                //timer.Reset(time.Second * 10)
+//        }
+//    }
+//}
+
 var port = flag.Int("port", 8081, "The TCP port that the server listens on")
 
 func main() {
 	flag.Parse()
 	fmt.Printf("Starting auth: port = %d\n", *port)
+
+    go recvTurnCapacity()
+
+    //timer = time.NewTimer(time.Second * 10)
+    //go checkTurnAlive()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "Welcome to the home page!")
